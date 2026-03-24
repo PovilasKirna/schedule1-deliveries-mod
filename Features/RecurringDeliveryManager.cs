@@ -4,10 +4,8 @@ using System.Linq;
 using DeliveriesProMax.Core;
 using DeliveriesProMax.Data;
 using UnityEngine;
-using Il2CppScheduleOne.Delivery;
 using Il2CppScheduleOne.UI.Phone.Delivery;
 using Il2CppScheduleOne.UI.Shop;
-using Il2CppScheduleOne.Money;
 
 namespace DeliveriesProMax.Features
 {
@@ -132,15 +130,7 @@ namespace DeliveriesProMax.Features
 
         private static DeliveryApp? GetDeliveryApp()
         {
-            try
-            {
-                var appType = Il2CppInterop.Runtime.Il2CppType.From(typeof(DeliveryApp));
-                var instances = UnityEngine.Object.FindObjectsOfType(appType);
-                if (instances != null && instances.Count > 0)
-                    return instances[0].TryCast<DeliveryApp>();
-            }
-            catch { }
-            return null;
+            return GameRefs.FindDeliveryApp();
         }
 
         private static DeliveryShop? FindDeliveryShop(DeliveryApp app, string shopId)
@@ -155,19 +145,7 @@ namespace DeliveriesProMax.Features
 
         private static bool CanPlayerAfford(float cost)
         {
-            try
-            {
-                var moneyType = Il2CppInterop.Runtime.Il2CppType.From(typeof(MoneyManager));
-                var instances = UnityEngine.Object.FindObjectsOfType(moneyType);
-                if (instances != null && instances.Count > 0)
-                {
-                    var moneyManager = instances[0].TryCast<MoneyManager>();
-                    if (moneyManager != null)
-                        return (moneyManager.cashBalance + moneyManager.onlineBalance) >= cost;
-                }
-            }
-            catch { }
-            return false;
+            return GameRefs.CanPlayerAfford(cost);
         }
 
         private static bool PlaceOrderThroughShop(DeliveryShop deliveryShop, SavedDelivery delivery)

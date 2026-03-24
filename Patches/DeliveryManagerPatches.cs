@@ -82,6 +82,8 @@ namespace DeliveriesProMax.Patches
 
         /// <summary>
         /// Hook RecordDeliveryReceipt_Server to record the delivery in history when completed.
+        /// Uses pending delivery data captured at send time when available, falls back to
+        /// extracting from the receipt and computing cost from shop listings.
         /// Parameter name "receipt" matches the original method signature.
         /// </summary>
         [HarmonyPatch(typeof(DeliveryManager), nameof(DeliveryManager.RecordDeliveryReceipt_Server))]
@@ -97,10 +99,32 @@ namespace DeliveriesProMax.Patches
                 string storeName = receipt.StoreName ?? "Unknown Shop";
                 string shopId = storeName;
 
+                // Try to use pending delivery data captured at send time (has pre-computed cost).
+                // DeliveryReceipt may not have DeliveryID, so we match by StoreName + item comparison.
+                PendingDeliveryInfo? matchedPending = null;
+                string? matchedKey = null;
+                foreach (var kvp in _pendingDeliveries)
+                {
+                    if (kvp.Value.StoreName == storeName)
+                    {
+                        matchedPending = kvp.Value;
+                        matchedKey = kvp.Key;
+                        break;
+                    }
+                }
+                if (matchedPending != null && matchedKey != null)
+                {
+                    _pendingDeliveries.Remove(matchedKey);
+                    Mod.Instance?.HistoryTracker?.RecordDelivery(
+                        matchedPending.StoreName, matchedPending.StoreName, matchedPending.Items, matchedPending.TotalCost);
+                    Mod.Logger.Msg($"Recorded delivery from pending data: {matchedPending.StoreName}");
+                    return;
+                }
+
+                // Fallback: extract items from receipt directly
                 var items = new List<SavedDeliveryItem>();
                 float totalCost = 0f;
 
-                // Extract items from receipt
                 var receiptItems = receipt.Items;
                 if (receiptItems != null)
                 {
@@ -119,10 +143,7 @@ namespace DeliveriesProMax.Patches
                     }
                 }
 
-                // Try to get cost from pending delivery data (captured at send time)
-                // or compute it from shop listings
                 totalCost = TryComputeCost(storeName, items);
-
                 Mod.Instance?.HistoryTracker?.RecordDelivery(shopId, storeName, items, totalCost);
             }
             catch (Exception ex)
@@ -139,11 +160,7 @@ namespace DeliveriesProMax.Patches
         {
             try
             {
-                var appType = Il2CppInterop.Runtime.Il2CppType.From(typeof(DeliveryApp));
-                var apps = UnityEngine.Object.FindObjectsOfType(appType);
-                if (apps == null || apps.Count == 0) return 0f;
-
-                var deliveryApp = apps[0].TryCast<DeliveryApp>();
+                var deliveryApp = GameRefs.FindDeliveryApp();
                 if (deliveryApp == null) return 0f;
 
                 var shop = deliveryApp.GetShop(storeName);
