@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
+using Il2CppTMPro;
 using DeliveriesProMax.Core;
 using DeliveriesProMax.Data;
-using ScheduleOne.Delivery;
-using ScheduleOne.Money;
-using ScheduleOne.UI.Phone.Delivery;
+using Il2CppScheduleOne.Delivery;
+using Il2CppScheduleOne.Money;
+using Il2CppScheduleOne.UI.Phone.Delivery;
 
 namespace DeliveriesProMax.UI
 {
@@ -209,18 +209,39 @@ namespace DeliveriesProMax.UI
             {
                 Mod.Logger.Msg($"Quick reorder: {delivery.ShopName}");
 
-                var managerType = Il2CppInterop.Runtime.Il2CppType.From(typeof(DeliveryManager));
-                var managers = UnityEngine.Object.FindObjectsOfType(managerType);
-                if (managers == null || managers.Count == 0) return;
+                // Find the DeliveryApp
+                var appType = Il2CppInterop.Runtime.Il2CppType.From(typeof(DeliveryApp));
+                var apps = UnityEngine.Object.FindObjectsOfType(appType);
+                if (apps == null || apps.Count == 0) return;
 
-                var manager = managers[0].TryCast<DeliveryManager>();
-                if (manager == null) return;
+                var deliveryApp = apps[0].TryCast<DeliveryApp>();
+                if (deliveryApp == null) return;
 
-                var shop = manager.GetShop(delivery.ShopId);
-                if (shop == null) { Mod.Logger.Warning($"Shop not found: {delivery.ShopId}"); return; }
+                // Find the matching DeliveryShop
+                var shops = deliveryApp.deliveryShops;
+                if (shops == null) return;
 
-                if (manager.GetActiveShopDelivery(shop) != null)
-                { Mod.Logger.Msg("Shop already has an active delivery"); return; }
+                DeliveryShop? targetShop = null;
+                for (int i = 0; i < shops.Count; i++)
+                {
+                    if (shops[i].MatchingShopInterfaceName == delivery.ShopId)
+                    {
+                        targetShop = shops[i];
+                        break;
+                    }
+                }
+
+                if (targetShop == null)
+                {
+                    Mod.Logger.Warning($"DeliveryShop not found: {delivery.ShopId}");
+                    return;
+                }
+
+                if (targetShop.HasActiveDelivery())
+                {
+                    Mod.Logger.Msg("Shop already has an active delivery");
+                    return;
+                }
 
                 if (Config.PreventNegativeBalance.Value)
                 {
@@ -229,21 +250,37 @@ namespace DeliveriesProMax.UI
                     if (moneyManagers != null && moneyManagers.Count > 0)
                     {
                         var mm = moneyManagers[0].TryCast<MoneyManager>();
-                        if (mm != null && mm.Balance < delivery.TotalCost)
-                        { Mod.Logger.Msg($"Insufficient funds: ${mm.Balance:F2} < ${delivery.TotalCost:F2}"); return; }
+                        if (mm != null && (mm.cashBalance + mm.onlineBalance) < delivery.TotalCost)
+                        {
+                            Mod.Logger.Msg($"Insufficient funds for reorder");
+                            return;
+                        }
                     }
                 }
 
-                var shopInterface = shop.ShopInterface;
-                if (shopInterface == null) { Mod.Logger.Warning("ShopInterface is null"); return; }
+                // Reset cart and set item quantities
+                targetShop.ResetCart();
 
-                shopInterface.Cart.ClearCart();
-                foreach (var item in delivery.Items)
+                var listingEntries = targetShop.listingEntries;
+                if (listingEntries != null)
                 {
-                    var listing = shopInterface.GetListing(item.ItemId);
-                    if (listing != null) shopInterface.Cart.AddItem(listing, item.Quantity);
+                    foreach (var item in delivery.Items)
+                    {
+                        for (int i = 0; i < listingEntries.Count; i++)
+                        {
+                            var entry = listingEntries[i];
+                            var listing = entry.MatchingListing;
+                            if (listing != null && listing.name == item.ItemId)
+                            {
+                                entry.SetQuantity(item.Quantity, true);
+                                break;
+                            }
+                        }
+                    }
                 }
-                shopInterface.ConfirmOrderPressed();
+
+                // Submit the order
+                targetShop.OrderPressed();
                 Mod.Logger.Msg($"Reorder placed for {delivery.ShopName}!");
             }
             catch (Exception ex)

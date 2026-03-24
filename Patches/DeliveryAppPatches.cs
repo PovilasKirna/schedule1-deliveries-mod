@@ -2,8 +2,8 @@ using System;
 using HarmonyLib;
 using DeliveriesProMax.Core;
 using DeliveriesProMax.UI;
-using ScheduleOne.Delivery;
-using ScheduleOne.UI.Phone.Delivery;
+using Il2CppScheduleOne.Delivery;
+using Il2CppScheduleOne.UI.Phone.Delivery;
 
 namespace DeliveriesProMax.Patches
 {
@@ -15,7 +15,7 @@ namespace DeliveriesProMax.Patches
     {
         private static bool _uiInjected = false;
 
-        [HarmonyPatch(typeof(DeliveryApp), "Awake")]
+        [HarmonyPatch(typeof(DeliveryApp), nameof(DeliveryApp.Awake))]
         [HarmonyPostfix]
         public static void Awake_Postfix(DeliveryApp __instance)
         {
@@ -33,7 +33,7 @@ namespace DeliveriesProMax.Patches
             }
         }
 
-        [HarmonyPatch(typeof(DeliveryApp), "CreateDeliveryStatusDisplay")]
+        [HarmonyPatch(typeof(DeliveryApp), nameof(DeliveryApp.CreateDeliveryStatusDisplay))]
         [HarmonyPostfix]
         public static void CreateDeliveryStatusDisplay_Postfix(
             DeliveryApp __instance,

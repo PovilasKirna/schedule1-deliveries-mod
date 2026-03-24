@@ -28,6 +28,12 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
 
+  <!-- Exclude the temporary inspector tool from compilation -->
+  <ItemGroup>
+    <Compile Remove="_inspect\**" />
+    <None Remove="_inspect\**" />
+  </ItemGroup>
+
   <!-- MelonLoader references -->
   <ItemGroup>
     <Reference Include="MelonLoader">

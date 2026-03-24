@@ -4,9 +4,10 @@ using System.Linq;
 using DeliveriesProMax.Core;
 using DeliveriesProMax.Data;
 using UnityEngine;
-using ScheduleOne.Delivery;
-using ScheduleOne.UI.Phone.Delivery;
-using ScheduleOne.Money;
+using Il2CppScheduleOne.Delivery;
+using Il2CppScheduleOne.UI.Phone.Delivery;
+using Il2CppScheduleOne.UI.Shop;
+using Il2CppScheduleOne.Money;
 
 namespace DeliveriesProMax.Features
 {
@@ -95,17 +96,22 @@ namespace DeliveriesProMax.Features
         {
             try
             {
-                var deliveryManager = GetDeliveryManager();
-                if (deliveryManager == null)
+                var deliveryApp = GetDeliveryApp();
+                if (deliveryApp == null)
                 {
-                    Mod.Logger.Warning("DeliveryManager not found");
+                    Mod.Logger.Warning("DeliveryApp not found");
                     return false;
                 }
 
-                var shop = deliveryManager.GetShop(delivery.ShopId);
-                if (shop == null)
+                var deliveryShop = FindDeliveryShop(deliveryApp, delivery.ShopId);
+                if (deliveryShop == null)
                 {
-                    Mod.Logger.Warning($"Shop not found: {delivery.ShopId}");
+                    Mod.Logger.Warning($"DeliveryShop not found for: {delivery.ShopId}");
+                    return false;
+                }
+
+                if (deliveryShop.HasActiveDelivery())
+                {
                     return false;
                 }
 
@@ -115,13 +121,7 @@ namespace DeliveriesProMax.Features
                     return false;
                 }
 
-                var activeDelivery = deliveryManager.GetActiveShopDelivery(shop);
-                if (activeDelivery != null)
-                {
-                    return false;
-                }
-
-                return PlaceOrderThroughShop(shop, delivery);
+                return PlaceOrderThroughShop(deliveryShop, delivery);
             }
             catch (Exception ex)
             {
@@ -130,16 +130,30 @@ namespace DeliveriesProMax.Features
             }
         }
 
-        private static DeliveryManager? GetDeliveryManager()
+        private static DeliveryApp? GetDeliveryApp()
         {
             try
             {
-                var managerType = Il2CppInterop.Runtime.Il2CppType.From(typeof(DeliveryManager));
-                var instances = UnityEngine.Object.FindObjectsOfType(managerType);
+                var appType = Il2CppInterop.Runtime.Il2CppType.From(typeof(DeliveryApp));
+                var instances = UnityEngine.Object.FindObjectsOfType(appType);
                 if (instances != null && instances.Count > 0)
-                    return instances[0].TryCast<DeliveryManager>();
+                    return instances[0].TryCast<DeliveryApp>();
             }
             catch { }
+            return null;
+        }
+
+        private static DeliveryShop? FindDeliveryShop(DeliveryApp app, string shopId)
+        {
+            var shops = app.deliveryShops;
+            if (shops == null) return null;
+
+            for (int i = 0; i < shops.Count; i++)
+            {
+                var shop = shops[i];
+                if (shop.MatchingShopInterfaceName == shopId)
+                    return shop;
+            }
             return null;
         }
 
@@ -153,45 +167,53 @@ namespace DeliveriesProMax.Features
                 {
                     var moneyManager = instances[0].TryCast<MoneyManager>();
                     if (moneyManager != null)
-                        return moneyManager.Balance >= cost;
+                        return (moneyManager.cashBalance + moneyManager.onlineBalance) >= cost;
                 }
             }
             catch { }
             return false;
         }
 
-        private static bool PlaceOrderThroughShop(DeliveryShop shop, SavedDelivery delivery)
+        private static bool PlaceOrderThroughShop(DeliveryShop deliveryShop, SavedDelivery delivery)
         {
             try
             {
-                var shopInterface = shop.ShopInterface;
+                var shopInterface = deliveryShop.MatchingShop;
                 if (shopInterface == null)
                 {
-                    Mod.Logger.Warning("Shop interface is null");
+                    Mod.Logger.Warning("MatchingShop (ShopInterface) is null");
                     return false;
                 }
 
-                shopInterface.Cart.ClearCart();
+                // Reset the cart first
+                deliveryShop.ResetCart();
 
-                foreach (var item in delivery.Items)
+                // Find listing entries and set quantities
+                var listingEntries = deliveryShop.listingEntries;
+                if (listingEntries != null)
                 {
-                    var listing = shopInterface.GetListing(item.ItemId);
-                    if (listing != null)
+                    foreach (var item in delivery.Items)
                     {
-                        shopInterface.Cart.AddItem(listing, item.Quantity);
-                    }
-                    else
-                    {
-                        Mod.Logger.Warning($"Listing not found for item: {item.ItemId}");
+                        for (int i = 0; i < listingEntries.Count; i++)
+                        {
+                            var entry = listingEntries[i];
+                            var listing = entry.MatchingListing;
+                            if (listing != null && listing.name == item.ItemId)
+                            {
+                                entry.SetQuantity(item.Quantity, true);
+                                break;
+                            }
+                        }
                     }
                 }
 
-                shopInterface.ConfirmOrderPressed();
+                // Submit the order through the DeliveryShop
+                deliveryShop.OrderPressed();
                 return true;
             }
             catch (Exception ex)
             {
-                Mod.Logger.Error($"PlaceOrderThroughGame error: {ex.Message}");
+                Mod.Logger.Error($"PlaceOrderThroughShop error: {ex.Message}");
                 return false;
             }
         }

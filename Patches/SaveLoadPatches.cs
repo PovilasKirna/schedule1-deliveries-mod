@@ -1,7 +1,7 @@
 using System;
 using HarmonyLib;
 using DeliveriesProMax.Core;
-using ScheduleOne.Persistence;
+using Il2CppScheduleOne.Persistence;
 
 namespace DeliveriesProMax.Patches
 {
@@ -11,33 +11,19 @@ namespace DeliveriesProMax.Patches
     [HarmonyPatch]
     public static class SaveLoadPatches
     {
-        [HarmonyPatch(typeof(LoadManager), "CanStartLoading")]
+        [HarmonyPatch(typeof(LoadManager), nameof(LoadManager.StartGame))]
         [HarmonyPostfix]
-        public static void CanStartLoading_Postfix(
+        public static void StartGame_Postfix(
             LoadManager __instance,
-            bool __result)
+            SaveInfo saveInfo)
         {
-            if (!__result) return;
-
             try
             {
                 string saveName = "default";
 
-                try
+                if (saveInfo != null)
                 {
-                    var activeSaveInfo = LoadManager.ActiveSaveInfo;
-                    if (activeSaveInfo != null)
-                    {
-                        saveName = activeSaveInfo.SaveName ?? "default";
-                    }
-                }
-                catch
-                {
-                    try
-                    {
-                        saveName = $"save_{__instance.SaveSlotNumber}";
-                    }
-                    catch { }
+                    saveName = saveInfo.OrganisationName ?? $"save_{saveInfo.SaveSlotNumber}";
                 }
 
                 Mod.Logger.Msg($"Game loading detected, save slot: {saveName}");
