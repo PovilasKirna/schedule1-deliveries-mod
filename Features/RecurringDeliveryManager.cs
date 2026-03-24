@@ -145,15 +145,11 @@ namespace DeliveriesProMax.Features
 
         private static DeliveryShop? FindDeliveryShop(DeliveryApp app, string shopId)
         {
-            var shops = app.deliveryShops;
-            if (shops == null) return null;
-
-            for (int i = 0; i < shops.Count; i++)
+            try
             {
-                var shop = shops[i];
-                if (shop.MatchingShopInterfaceName == shopId)
-                    return shop;
+                return app.GetShop(shopId);
             }
+            catch { }
             return null;
         }
 

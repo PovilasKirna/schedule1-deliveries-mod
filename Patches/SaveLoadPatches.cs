@@ -15,15 +15,15 @@ namespace DeliveriesProMax.Patches
         [HarmonyPostfix]
         public static void StartGame_Postfix(
             LoadManager __instance,
-            SaveInfo saveInfo)
+            SaveInfo info)
         {
             try
             {
                 string saveName = "default";
 
-                if (saveInfo != null)
+                if (info != null)
                 {
-                    saveName = saveInfo.OrganisationName ?? $"save_{saveInfo.SaveSlotNumber}";
+                    saveName = info.OrganisationName ?? $"save_{info.SaveSlotNumber}";
                 }
 
                 Mod.Logger.Msg($"Game loading detected, save slot: {saveName}");

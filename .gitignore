@@ -18,3 +18,8 @@ Desktop.ini
 
 # Serena tooling
 .serena/
+
+# Temporary inspector tools
+_inspect/
+_inspect.ps1
+_inspect_types.csx

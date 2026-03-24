@@ -5,34 +5,37 @@ using DeliveriesProMax.Core;
 using DeliveriesProMax.Data;
 using Il2CppScheduleOne.Delivery;
 using Il2CppScheduleOne.DevUtilities;
+using Il2CppScheduleOne.UI.Phone.Delivery;
+using Il2CppScheduleOne.UI.Shop;
 
 namespace DeliveriesProMax.Patches
 {
     /// <summary>
-    /// Harmony patches for DeliveryManager — hooks delivery completion for history tracking.
+    /// Harmony patches for DeliveryManager — hooks delivery send and receipt for history tracking.
     /// </summary>
     [HarmonyPatch]
     public static class DeliveryManagerPatches
     {
+        /// <summary>
+        /// Hook SendDelivery to capture item data when a delivery is placed.
+        /// Parameter name "delivery" matches the original method signature.
+        /// </summary>
         [HarmonyPatch(typeof(DeliveryManager), nameof(DeliveryManager.SendDelivery))]
         [HarmonyPostfix]
         public static void SendDelivery_Postfix(
             DeliveryManager __instance,
-            DeliveryInstance deliveryInstance)
+            DeliveryInstance delivery)
         {
             try
             {
-                if (deliveryInstance == null) return;
+                if (delivery == null) return;
 
-                // Store delivery info for when it completes
-                // We hook SendDelivery since this is when items are known
-                string storeName = deliveryInstance.StoreName ?? "Unknown Shop";
-
-                // Extract items from the DeliveryInstance.Items (StringIntPair array)
+                string storeName = delivery.StoreName ?? "Unknown Shop";
                 var items = new List<SavedDeliveryItem>();
                 float totalCost = 0f;
 
-                var instanceItems = deliveryInstance.Items;
+                // Extract items from DeliveryInstance.Items (StringIntPair[])
+                var instanceItems = delivery.Items;
                 if (instanceItems != null)
                 {
                     for (int i = 0; i < instanceItems.Length; i++)
@@ -50,15 +53,17 @@ namespace DeliveriesProMax.Patches
                     }
                 }
 
-                // Store this for later completion tracking
-                _pendingDeliveries[deliveryInstance.DeliveryID ?? ""] = new PendingDeliveryInfo
+                // Try to compute total cost by looking up shop listing prices
+                totalCost = TryComputeCost(storeName, items);
+
+                _pendingDeliveries[delivery.DeliveryID ?? ""] = new PendingDeliveryInfo
                 {
                     StoreName = storeName,
                     Items = items,
                     TotalCost = totalCost
                 };
 
-                Mod.Logger.Msg($"Tracking delivery from {storeName}: {items.Count} items");
+                Mod.Logger.Msg($"Tracking delivery from {storeName}: {items.Count} items, cost=${totalCost:F2}");
             }
             catch (Exception ex)
             {
@@ -75,6 +80,10 @@ namespace DeliveriesProMax.Patches
             public float TotalCost { get; set; }
         }
 
+        /// <summary>
+        /// Hook RecordDeliveryReceipt_Server to record the delivery in history when completed.
+        /// Parameter name "receipt" matches the original method signature.
+        /// </summary>
         [HarmonyPatch(typeof(DeliveryManager), nameof(DeliveryManager.RecordDeliveryReceipt_Server))]
         [HarmonyPostfix]
         public static void RecordDeliveryReceipt_Postfix(
@@ -91,6 +100,7 @@ namespace DeliveriesProMax.Patches
                 var items = new List<SavedDeliveryItem>();
                 float totalCost = 0f;
 
+                // Extract items from receipt
                 var receiptItems = receipt.Items;
                 if (receiptItems != null)
                 {
@@ -109,11 +119,61 @@ namespace DeliveriesProMax.Patches
                     }
                 }
 
+                // Try to get cost from pending delivery data (captured at send time)
+                // or compute it from shop listings
+                totalCost = TryComputeCost(storeName, items);
+
                 Mod.Instance?.HistoryTracker?.RecordDelivery(shopId, storeName, items, totalCost);
             }
             catch (Exception ex)
             {
                 Mod.Logger.Error($"RecordDeliveryReceipt_Postfix error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Attempts to compute the total cost of items by looking up ShopListing prices
+        /// from the DeliveryApp's shop listings.
+        /// </summary>
+        private static float TryComputeCost(string storeName, List<SavedDeliveryItem> items)
+        {
+            try
+            {
+                var appType = Il2CppInterop.Runtime.Il2CppType.From(typeof(DeliveryApp));
+                var apps = UnityEngine.Object.FindObjectsOfType(appType);
+                if (apps == null || apps.Count == 0) return 0f;
+
+                var deliveryApp = apps[0].TryCast<DeliveryApp>();
+                if (deliveryApp == null) return 0f;
+
+                var shop = deliveryApp.GetShop(storeName);
+                if (shop == null) return 0f;
+
+                var listings = shop.listingEntries;
+                if (listings == null) return 0f;
+
+                float total = 0f;
+                foreach (var item in items)
+                {
+                    for (int i = 0; i < listings.Count; i++)
+                    {
+                        var entry = listings[i];
+                        var listing = entry.MatchingListing;
+                        if (listing != null && listing.name == item.ItemId)
+                        {
+                            float unitPrice = listing.Price;
+                            item.UnitPrice = unitPrice;
+                            total += unitPrice * item.Quantity;
+                            break;
+                        }
+                    }
+                }
+                return total;
+            }
+            catch (Exception ex)
+            {
+                Mod.Logger.Warning($"Could not compute delivery cost: {ex.Message}");
+                return 0f;
             }
         }
     }

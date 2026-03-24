@@ -217,19 +217,8 @@ namespace DeliveriesProMax.UI
                 var deliveryApp = apps[0].TryCast<DeliveryApp>();
                 if (deliveryApp == null) return;
 
-                // Find the matching DeliveryShop
-                var shops = deliveryApp.deliveryShops;
-                if (shops == null) return;
-
-                DeliveryShop? targetShop = null;
-                for (int i = 0; i < shops.Count; i++)
-                {
-                    if (shops[i].MatchingShopInterfaceName == delivery.ShopId)
-                    {
-                        targetShop = shops[i];
-                        break;
-                    }
-                }
+                // Find the matching DeliveryShop using the built-in GetShop method
+                DeliveryShop? targetShop = deliveryApp.GetShop(delivery.ShopId);
 
                 if (targetShop == null)
                 {

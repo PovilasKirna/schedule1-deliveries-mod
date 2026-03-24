@@ -4,6 +4,7 @@ using DeliveriesProMax.Core;
 using DeliveriesProMax.UI;
 using Il2CppScheduleOne.Delivery;
 using Il2CppScheduleOne.UI.Phone.Delivery;
+using UnityEngine;
 
 namespace DeliveriesProMax.Patches
 {
@@ -13,19 +14,19 @@ namespace DeliveriesProMax.Patches
     [HarmonyPatch]
     public static class DeliveryAppPatches
     {
-        private static bool _uiInjected = false;
-
         [HarmonyPatch(typeof(DeliveryApp), nameof(DeliveryApp.Awake))]
         [HarmonyPostfix]
         public static void Awake_Postfix(DeliveryApp __instance)
         {
             try
             {
-                if (_uiInjected) return;
+                // Check if we already injected UI into this specific instance
+                // by looking for our panel. This handles scene reloads properly.
+                var existing = __instance.transform.Find("DeliveriesProMax_HistoryPanel");
+                if (existing != null) return;
 
                 Mod.Logger.Msg("Injecting Deliveries Pro Max UI into DeliveryApp...");
                 DeliveryAppUI.InjectUI(__instance);
-                _uiInjected = true;
             }
             catch (Exception ex)
             {
@@ -33,15 +34,19 @@ namespace DeliveriesProMax.Patches
             }
         }
 
+        /// <summary>
+        /// Hook CreateDeliveryStatusDisplay to enhance status displays.
+        /// Parameter name "instance" matches the original method signature.
+        /// </summary>
         [HarmonyPatch(typeof(DeliveryApp), nameof(DeliveryApp.CreateDeliveryStatusDisplay))]
         [HarmonyPostfix]
         public static void CreateDeliveryStatusDisplay_Postfix(
             DeliveryApp __instance,
-            DeliveryInstance deliveryInstance)
+            DeliveryInstance instance)
         {
             try
             {
-                DeliveryAppUI.EnhanceStatusDisplay(__instance, deliveryInstance);
+                DeliveryAppUI.EnhanceStatusDisplay(__instance, instance);
             }
             catch (Exception ex)
             {
